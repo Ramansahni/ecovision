@@ -1,0 +1,8 @@
+ecovision_env/
+data/
+*.tif
+*.tiff
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.vscode/
