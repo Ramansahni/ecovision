@@ -5,15 +5,15 @@ import rasterio
 import os
 
 # =========================================================
-# 1️⃣ LOAD BANDS FROM EO FOLDER
+# 1️⃣ LOAD EO BANDS
 # =========================================================
 
-eo_folder = "EO"  # folder inside EcoVision
+eo_folder = "EO"
 
-b2_path = os.path.join(eo_folder, "b2.tiff")
-b3_path = os.path.join(eo_folder, "b3.tiff")
-b4_path = os.path.join(eo_folder, "b4.tiff")
-b8_path = os.path.join(eo_folder, "b8.tiff")
+b2_path = os.path.join(eo_folder, "b2.tiff")  # Blue
+b3_path = os.path.join(eo_folder, "b3.tiff")  # Green
+b4_path = os.path.join(eo_folder, "b4.tiff")  # Red
+b8_path = os.path.join(eo_folder, "b8.tiff")  # NIR
 
 with rasterio.open(b2_path) as src:
     blue = src.read(1).astype(float)
@@ -27,17 +27,39 @@ with rasterio.open(b4_path) as src:
 with rasterio.open(b8_path) as src:
     nir = src.read(1).astype(float)
 
-# Stack bands
-image = np.stack([blue, green, red, nir], axis=-1)
+print("Bands loaded successfully!")
 
 # =========================================================
-# 2️⃣ NDVI
+# 2️⃣ CREATE RGB MAP (FOR VISUALIZATION)
+# =========================================================
+
+rgb = np.stack([red, green, blue], axis=-1)
+
+# Normalize for display
+rgb = rgb / (np.percentile(rgb, 99) + 1e-7)
+rgb = np.clip(rgb, 0, 1)
+
+plt.figure(figsize=(8,8))
+plt.imshow(rgb)
+plt.title("RGB Satellite Image")
+plt.axis("off")
+plt.show()
+
+# =========================================================
+# 3️⃣ NDVI CALCULATION
 # =========================================================
 
 ndvi = (nir - red) / (nir + red + 1e-7)
 
+plt.figure(figsize=(8,8))
+plt.imshow(ndvi, cmap="RdYlGn")
+plt.colorbar(label="NDVI Value")
+plt.title("NDVI Map")
+plt.axis("off")
+plt.show()
+
 # =========================================================
-# 3️⃣ FVC (Fractional Vegetation Cover)
+# 4️⃣ FVC (Fractional Vegetation Cover)
 # =========================================================
 
 ndvi_min = np.percentile(ndvi, 5)
@@ -47,16 +69,26 @@ fvc = ((ndvi - ndvi_min) / (ndvi_max - ndvi_min + 1e-7)) ** 2
 fvc = np.clip(fvc, 0, 1)
 
 # =========================================================
-# 4️⃣ COST MAP
+# 5️⃣ COST MAP
 # =========================================================
 
-cost_map = 1 + (fvc * 10)
+cost_map = 1 + (fvc * 15)
 
-# Penalize water
+# Water penalty (NDVI < 0)
 cost_map[ndvi < 0] = 100
 
+# Very dense vegetation penalty
+cost_map[fvc > 0.85] = 60
+
+plt.figure(figsize=(8,8))
+plt.imshow(cost_map, cmap="inferno")
+plt.colorbar(label="Traversal Cost")
+plt.title("Environmental Cost Map")
+plt.axis("off")
+plt.show()
+
 # =========================================================
-# 5️⃣ A* ALGORITHM
+# 6️⃣ A* ALGORITHM
 # =========================================================
 
 def heuristic(a, b):
@@ -97,11 +129,8 @@ def astar(cost_map, start, goal):
     return None
 
 # =========================================================
-# 6️⃣ INTERACTIVE POINT SELECTION
+# 7️⃣ INTERACTIVE POINT SELECTION
 # =========================================================
-
-rgb = np.stack([blue, green, red], axis=-1)
-rgb = rgb / np.max(rgb)
 
 points = []
 
@@ -112,7 +141,6 @@ def onclick(event):
         points.append((y, x))
         plt.scatter(x, y, color='yellow', s=100)
         plt.draw()
-
         if len(points) == 2:
             plt.close()
 
@@ -131,13 +159,13 @@ print("Start:", start)
 print("Goal :", goal)
 
 # =========================================================
-# 7️⃣ RUN A*
+# 8️⃣ RUN A*
 # =========================================================
 
 path = astar(cost_map, start, goal)
 
 # =========================================================
-# 8️⃣ VISUALIZE RESULT
+# 9️⃣ FINAL VISUALIZATION
 # =========================================================
 
 plt.figure(figsize=(8,8))
@@ -145,12 +173,12 @@ plt.imshow(rgb)
 
 if path:
     path = np.array(path)
-    plt.plot(path[:,1], path[:,0], color='cyan', linewidth=2)
+    plt.plot(path[:,1], path[:,0], color='red', linewidth=2)
 
-plt.scatter(start[1], start[0], color='green', s=150, label="Start")
-plt.scatter(goal[1], goal[0], color='red', s=150, label="Goal")
+plt.scatter(start[1], start[0], color='blue', s=150, label="Start")
+plt.scatter(goal[1], goal[0], color='blue', s=150, label="Goal")
 
 plt.legend()
-plt.title("Eco-Optimal Path")
+plt.title("NDVI-Based Eco-Optimal Path")
+plt.axis("off")
 plt.show()
-
